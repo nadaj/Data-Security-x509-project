@@ -1,0 +1,29 @@
+package main;
+
+import java.security.cert.CertificateFactory;
+
+public class Main {
+
+	public static void main(String[] args) {
+		int option = 0;
+		while (true)
+		{
+			switch(option)
+			{
+				case 0: System.out.println("Odaberite funkcionalnost:");
+						break;
+				case 1: {
+					System.out.println("Generisanje novog para kljuceva");
+
+					try {
+						CertificateFactory cf = CertificateFactory.getInstance("X.509");
+					
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+	}
+
+}
