@@ -15,8 +15,7 @@ public class Main {
 		{
 			System.out.println("\nOdaberite funkcionalnost:");
 			System.out.println("1. Generisanje novog para kljuceva");
-			System.out.println("-------------------------------------------1" +
-					"");
+			System.out.println("-------------------------------------------");
 			option = in.nextInt();
 			switch(option)
 			{
