@@ -1,7 +1,9 @@
 package main;
 
+import java.security.*;
 import java.security.cert.CertificateFactory;
 import java.util.Scanner;
+
 
 public class Main {
 
@@ -13,7 +15,7 @@ public class Main {
 		{
 			System.out.println("\nOdaberite funkcionalnost:");
 			System.out.println("1. Generisanje novog para kljuceva");
-			System.out.println("----------------------------------");
+			System.out.println("--------------------------------------");
 			option = in.nextInt();
 			switch(option)
 			{
