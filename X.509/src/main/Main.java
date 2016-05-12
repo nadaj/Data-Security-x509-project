@@ -14,7 +14,7 @@ public class Main {
 		while (true)
 		{
 			System.out.println("\nOdaberite funkcionalnost:");
-			System.out.println("1. Generisanje novog para kljuceva");
+			System.out.println("1. Generisanje novog para kljuceva za sertifikat");
 			System.out.println("-------------------------------------------");
 			option = in.nextInt();
 			switch(option)
