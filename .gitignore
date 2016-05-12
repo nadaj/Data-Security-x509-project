@@ -15,8 +15,8 @@ local.properties
 .loadpath
 .recommenders
 
-# Eclipse Core
-.project
+# Eclipse Core.
+
 
 # External tool builders
 .externalToolBuilders/
