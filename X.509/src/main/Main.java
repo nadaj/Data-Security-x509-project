@@ -102,13 +102,14 @@ public class Main {
 						System.out.println("Osnovna ogranicenja: \nPrisutno[0/1]:");
 						int temp = in.nextInt();
 						boolean critical;
+						boolean cA = false;
 						if (temp == 1)
 						{
 							selected++;
 							System.out.println("Kriticno[true/false]:");
 							critical = in.nextBoolean();
 							System.out.println("cA[true/false]:");
-							boolean cA = in.nextBoolean();
+							cA = in.nextBoolean();
 							if (cA)
 							{
 								System.out.println("pathLenConstraint[-1-not present/vrednost]:");
@@ -181,9 +182,14 @@ public class Main {
 							if (in.nextInt() == 1)
 								keyUsageValue |= KeyUsage.keyAgreement;
 							
-							System.out.println("keyCertSign[0/1]:");
-							if (in.nextInt() == 1)
-								keyUsageValue |= KeyUsage.keyCertSign;
+							if(cA)
+							{
+								System.out.println("keyCertSign[0/1]:");
+								if (in.nextInt() == 1)
+									keyUsageValue |= KeyUsage.keyCertSign;
+								
+							}
+							
 							
 							System.out.println("cRLSign[0/1]:");
 							if (in.nextInt() == 1)
