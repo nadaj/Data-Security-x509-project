@@ -90,8 +90,7 @@ public class Main {
 						PublicKey pubKey = pair.getPublic();
 //						System.out.println("privateKey : " + privKey.toString());
 //					    System.out.println("publicKey : " + pubKey.toString());
-					    
-					    
+					  
 					    X500Name issuerName = nameBuilder.build();
 					    X500Name subject = issuerName;
 					    X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(issuerName, serialNumber,
@@ -101,29 +100,27 @@ public class Main {
 						int selected = 0;
 						System.out.println("Osnovna ogranicenja: \nPrisutno[0/1]:");
 						int temp = in.nextInt();
-						boolean critical;
+						boolean critical, criticalBasic = false;
 						boolean cA = false;
+						int pathLenConstraint = -1;
 						if (temp == 1)
 						{
 							selected++;
 							System.out.println("Kriticno[true/false]:");
 							critical = in.nextBoolean();
+							criticalBasic = critical;
 							System.out.println("cA[true/false]:");
 							cA = in.nextBoolean();
 							if (cA)
 							{
 								System.out.println("pathLenConstraint[-1-not present/vrednost]:");
-								int pathLenConstraint = in.nextInt();
+								pathLenConstraint = in.nextInt();
 								if (pathLenConstraint < -1)
 								{
 									System.out.println("Osnovna ogranicenja: parametar pathLenConstraint mora biti ceo broj > 0.");
 									break;
 								}
-								if (pathLenConstraint != -1)
-									certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
-								        critical,
-								        new BasicConstraints(pathLenConstraint));
-								else
+								if (pathLenConstraint == -1)
 									certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
 									        critical,
 									        new BasicConstraints(cA));
@@ -134,8 +131,6 @@ public class Main {
 								        critical,
 								        new BasicConstraints(cA));
 							}
-							
-							
 						}
 						
 						System.out.println("Alternativna imena izdavaoca sertifikata: \nPrisutno[0/1]:");
@@ -146,7 +141,7 @@ public class Main {
 							System.out.println("Kriticno[true/false]:");
 							critical = in.nextBoolean();
 							System.out.println("Tip alternativnog imena	[0 - otherName, 1 - rfc822, 2 - dNSName, 3 - x400Address"
-									+ ", 4- directoryName, 5 - ediPartyName, 6 - uniformResourceIdentifier, 7 - iPAddress, 8 - registeredID :");
+									+ ", 4 - directoryName, 5 - ediPartyName, 6 - uniformResourceIdentifier, 7 - iPAddress, 8 - registeredID :");
 							int altNameType = in.nextInt();
 							System.out.println("Alternativno ime:");
 							certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.18"),
@@ -186,10 +181,23 @@ public class Main {
 							{
 								System.out.println("keyCertSign[0/1]:");
 								if (in.nextInt() == 1)
+								{
+									if (pathLenConstraint != -1)
+										certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
+									        criticalBasic,
+									        new BasicConstraints(pathLenConstraint));
+									
 									keyUsageValue |= KeyUsage.keyCertSign;
-								
+								}
+								else
+								{
+									if (pathLenConstraint != -1)
+									{
+										System.out.println("Da bi se uneo pathLenConstraint, moraju da bude cA i keyCertSign true.");
+										break;
+									}
+								}
 							}
-							
 							
 							System.out.println("cRLSign[0/1]:");
 							if (in.nextInt() == 1)
@@ -218,6 +226,7 @@ public class Main {
 							System.out.println("Mora da se definise barem 1 ogranicenje.");
 							break;
 						}
+						
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
@@ -225,6 +234,7 @@ public class Main {
 				break;
 			}
 		}
+		in.close();
 	}
 
 }
