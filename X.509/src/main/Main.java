@@ -8,6 +8,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Scanner;
 
+import javax.security.cert.X509Certificate;
+
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -243,7 +245,9 @@ public class Main {
 						FileOutputStream outStream = new FileOutputStream ("mykeystore");
 						keystore.store(outStream, keypass.toCharArray());
 						outStream.close();
-						System.out.println(privKey.toString());
+						
+//						cert.verify(pubKey);
+//						System.out.println(privKey.toString());
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
@@ -261,6 +265,9 @@ public class Main {
 						String defaultalias = "keystore";
 						PrivateKey privKey = (PrivateKey) keystore.getKey(defaultalias, keypass.toCharArray());
 						System.out.println(privKey.toString());
+						
+						java.security.cert.Certificate certif = keystore.getCertificate(defaultalias);
+						System.out.println(certif.toString());
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
