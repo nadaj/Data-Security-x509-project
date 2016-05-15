@@ -1,5 +1,7 @@
 package main;
 
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.math.BigInteger;
 import java.security.*;
 import java.text.SimpleDateFormat;
@@ -15,8 +17,10 @@ import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 public class Main {
 
@@ -29,6 +33,7 @@ public class Main {
 			System.out.println("\nOdaberite funkcionalnost:");
 			System.out.println("0. Kraj");
 			System.out.println("1. Generisanje novog para kljuceva za sertifikat");
+			System.out.println("2. Dohvatanje kljuca");
 			System.out.println("-------------------------------------------");
 			option = in.nextInt();
 			if (option == 0) break;
@@ -88,8 +93,6 @@ public class Main {
 						KeyPair pair = keyGen.generateKeyPair();
 						PrivateKey privKey = pair.getPrivate();
 						PublicKey pubKey = pair.getPublic();
-//						System.out.println("privateKey : " + privKey.toString());
-//					    System.out.println("publicKey : " + pubKey.toString());
 					  
 					    X500Name issuerName = nameBuilder.build();
 					    X500Name subject = issuerName;
@@ -227,6 +230,37 @@ public class Main {
 							break;
 						}
 						
+						KeyStore keystore = KeyStore.getInstance("pkcs12");	// drugi argument moze da bude provider
+						String keypass = "password";
+						keystore.load(null, keypass.toCharArray());
+						
+						String defaultalias = "keystore";
+						java.security.cert.X509Certificate cert = new JcaX509CertificateConverter().
+								setProvider("BC").getCertificate(certBuilder.build(
+								new JcaContentSignerBuilder("SHA1withRSA").setProvider("BC").build(privKey)));
+						keystore.setKeyEntry(defaultalias, privKey, keypass.toCharArray(), 
+								new java.security.cert.X509Certificate[]{cert});
+						FileOutputStream outStream = new FileOutputStream ("mykeystore");
+						keystore.store(outStream, keypass.toCharArray());
+						outStream.close();
+						System.out.println(privKey.toString());
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				break;
+				case 2:
+				{
+					try {
+						KeyStore keystore = KeyStore.getInstance("pkcs12");
+						String keypass = "password";
+						FileInputStream inStream = new FileInputStream("mykeystore");
+					    keystore.load(inStream, keypass.toCharArray());
+					    inStream.close();
+						
+						String defaultalias = "keystore";
+						PrivateKey privKey = (PrivateKey) keystore.getKey(defaultalias, keypass.toCharArray());
+						System.out.println(privKey.toString());
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
