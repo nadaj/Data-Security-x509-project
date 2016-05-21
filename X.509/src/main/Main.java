@@ -1,15 +1,19 @@
 package main;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.math.BigInteger;
+import java.nio.charset.Charset;
 import java.security.*;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Base64;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Scanner;
-
-import javax.security.cert.X509Certificate;
-
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -22,10 +26,53 @@ import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 public class Main {
 
+	public static String toUTC(String date)
+	{
+		return date.substring(8, 10) + date.substring(3, 5) + date.substring(0,2) 
+						+ date.substring(10, 12) + date.substring(13, 15) + date.substring(16, 18) + "Z";
+	}
+	
+	public static String toGMT(String date)
+	{
+		return date.substring(6, 10) + date.substring(3, 5) + date.substring(0,2) 
+			+ date.substring(10, 12) + date.substring(13, 15) + date.substring(16, 18) + "Z";
+	}
+	
+	public static java.security.cert.Certificate importCertificate(String alias, String keypass, String filename) 
+			throws Exception
+	{
+		KeyStore keystore = KeyStore.getInstance("pkcs12");
+		FileInputStream inStream = new FileInputStream(filename);
+	    keystore.load(inStream, keypass.toCharArray());
+	    inStream.close();
+		
+		return keystore.getCertificate(alias);
+	}
+	
+	public static Date formatDate(String date) throws ParseException
+	{
+		SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyyHH:mm:ss'Z'");
+		SimpleDateFormat dateFormatUTC = new SimpleDateFormat("yyMMddHHmmss'Z'");
+		SimpleDateFormat dateFormatGMT = new SimpleDateFormat("yyyyMMddHHmmss'Z'");
+		
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(dateFormat.parse(date));
+		
+		if (cal.get(Calendar.YEAR) < 2050)	// UTC time
+		{
+			return dateFormatUTC.parse(toUTC(date));
+		}
+		else								// Generalized time
+		{
+			return dateFormatGMT.parse(toGMT(date));
+		}
+	}
+	
 	public static void main(String[] args) {
 		int option = 0;
 		Scanner in = new Scanner(System.in);
@@ -36,6 +83,8 @@ public class Main {
 			System.out.println("0. Kraj");
 			System.out.println("1. Generisanje novog para kljuceva za sertifikat");
 			System.out.println("2. Dohvatanje kljuca");
+			System.out.println("3. Potpisivanje sertifikata");
+			System.out.println("4. Izvoz kreiranog sertifikata");
 			System.out.println("-------------------------------------------");
 			option = in.nextInt();
 			if (option == 0) break;
@@ -46,25 +95,45 @@ public class Main {
 						System.out.println("\nVelicina kljuca:");
 						int keysize = in.nextInt();
 						if (keysize < 1024) keysize = 1024;
+						else if (keysize > 4096) keysize = 4096;
 						
-						System.out.println("Period vazenja - OD (format dd-mm-yyyy):");
-						String dateFrom = in.next();
-						SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
-						Date date1 = dateFormat.parse(dateFrom);
+						System.out.println("Period vazenja - OD (u formatu dd-MM-yyyy HH:mm:ss):");
+						String notBefore = in.next();
+						notBefore += in.next() + "Z";
 						
-						System.out.println("Period vazenja - DO (format dd-mm-yyyy):");
-						String dateTo = in.next();
-						Date date2 = dateFormat.parse(dateTo);
-						if (date2.before(date1))
+						SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyyHH:mm:ss'Z'");
+						Date date1 = formatDate(notBefore);
+						System.out.println(date1.toString());
+						
+						System.out.println("Period vazenja - DO (u formatu dd-MM-yyyy HH:mm:ss ili . ako nema):");
+						String notAfter = in.next();
+						
+						Date date2;
+						SimpleDateFormat dateFormatGMT = new SimpleDateFormat("yyyyMMddHHmmss'Z'");
+						
+						if (notAfter.compareTo(".") == 0)
 						{
-							System.out.println("Nisu ispravni uneti datumi.");
+							date2 = dateFormatGMT.parse("99991231235959Z");
+						}
+						else
+						{
+							notAfter += in.next() + "Z";
+
+							if (dateFormat.parse(notAfter).before(dateFormat.parse(notBefore)))
+							{
+								System.out.println("Nisu ispravni uneti datumi.");
+								break;
+							}
+							
+							date2 = formatDate(notAfter);
+							System.out.println(date2.toString());
 						}
 						
 						System.out.println("Serijski broj:");
 						BigInteger serialNumber = in.nextBigInteger();
-						if (serialNumber.signum() == -1 || serialNumber.signum() == 0)
+						if (serialNumber.signum() == -1 || serialNumber.signum() == 0 || serialNumber.bitLength() > 160)
 						{
-							System.out.println("Serijski broj mora da bude pozitivan ceo broj.");
+							System.out.println("Serijski broj mora da bude pozitivan ceo broj u opsegu od 0 do 2^160 - 1.");
 							break;
 						}
 						
@@ -143,8 +212,7 @@ public class Main {
 						if (temp == 1)
 						{
 							selected++;
-							System.out.println("Kriticno[true/false]:");
-							critical = in.nextBoolean();
+							critical = false;
 							System.out.println("Tip alternativnog imena	[0 - otherName, 1 - rfc822, 2 - dNSName, 3 - x400Address"
 									+ ", 4 - directoryName, 5 - ediPartyName, 6 - uniformResourceIdentifier, 7 - iPAddress, 8 - registeredID :");
 							int altNameType = in.nextInt();
@@ -159,8 +227,7 @@ public class Main {
 						if (temp == 1)
 						{
 							selected++;
-							System.out.println("Kriticno[true/false]:");
-							critical = in.nextBoolean();
+							critical = true;
 							int keyUsageValue = 0;
 							System.out.println("digitalSignature[0/1]:");
 							if (in.nextInt() == 1)
@@ -242,7 +309,7 @@ public class Main {
 								new JcaContentSignerBuilder("SHA1withRSA").setProvider("BC").build(privKey)));
 						keystore.setKeyEntry(defaultalias, privKey, keypass.toCharArray(), 
 								new java.security.cert.X509Certificate[]{cert});
-						FileOutputStream outStream = new FileOutputStream ("mykeystore");
+						FileOutputStream outStream = new FileOutputStream ("mykeystore.p12");
 						keystore.store(outStream, keypass.toCharArray());
 						outStream.close();
 						
@@ -258,7 +325,7 @@ public class Main {
 					try {
 						KeyStore keystore = KeyStore.getInstance("pkcs12");
 						String keypass = "password";
-						FileInputStream inStream = new FileInputStream("mykeystore");
+						FileInputStream inStream = new FileInputStream("mykeystore.p12");
 					    keystore.load(inStream, keypass.toCharArray());
 					    inStream.close();
 						
@@ -268,6 +335,44 @@ public class Main {
 						
 						java.security.cert.Certificate certif = keystore.getCertificate(defaultalias);
 						System.out.println(certif.toString());
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				break;
+				case 3:
+				{
+					try {
+						KeyStore keystore = KeyStore.getInstance("pkcs12");
+						String keypass = "password";
+						FileInputStream inStream = new FileInputStream("mykeystore.p12");
+					    keystore.load(inStream, keypass.toCharArray());
+					    inStream.close();
+						
+						String defaultalias = "keystore";
+						PrivateKey privKey = (PrivateKey) keystore.getKey(defaultalias, keypass.toCharArray());
+						java.security.cert.Certificate certif = keystore.getCertificate(defaultalias);
+						
+						//ContentSigner signGen = new JcaContentSignerBuilder("SHA1withRSA").build(CAPrivateKey);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				break;
+				case 4:
+				{
+					try {
+						java.security.cert.Certificate certif = importCertificate("keystore", "password", "mykeystore.p12");
+						 File file = new File("encodedcert.cer");
+						 byte[] buf = certif.getEncoded();
+						 
+						 FileOutputStream os = new FileOutputStream(file);
+						 os.write(buf);
+						 
+						 Writer wr = new OutputStreamWriter(os, Charset.forName("UTF-8"));
+						 wr.write(Base64.getEncoder().withoutPadding().encodeToString(buf));
+						 wr.flush();
+						 os.close();
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
