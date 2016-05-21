@@ -8,6 +8,7 @@ import java.io.Writer;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.security.*;
+import java.security.cert.X509Certificate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Base64;
@@ -28,6 +29,9 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 
 public class Main {
 
@@ -139,20 +143,21 @@ public class Main {
 						
 						X500NameBuilder nameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
 						System.out.println("Informacije o korisniku (CN, OU, O, L, ST, C, E):");
+						in.nextLine();
 						System.out.println("CN:");
-					    nameBuilder.addRDN(BCStyle.CN, in.next());
+					    nameBuilder.addRDN(BCStyle.CN, in.nextLine());
 						System.out.println("OU:");
-						nameBuilder.addRDN(BCStyle.OU, in.next());
+						nameBuilder.addRDN(BCStyle.OU, in.nextLine());
 						System.out.println("O:");
-						nameBuilder.addRDN(BCStyle.O, in.next());
+						nameBuilder.addRDN(BCStyle.O, in.nextLine());
 						System.out.println("L:");
-						nameBuilder.addRDN(BCStyle.L, in.next());
+						nameBuilder.addRDN(BCStyle.L, in.nextLine());
 						System.out.println("ST:");
-						nameBuilder.addRDN(BCStyle.ST, in.next());
+						nameBuilder.addRDN(BCStyle.ST, in.nextLine());
 						System.out.println("C:");
-						nameBuilder.addRDN(BCStyle.C, in.next());
+						nameBuilder.addRDN(BCStyle.C, in.nextLine());
 						System.out.println("E:");
-						nameBuilder.addRDN(BCStyle.E, in.next());
+						nameBuilder.addRDN(BCStyle.E, in.nextLine());
 						
 						// init key generator
 						Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -219,7 +224,7 @@ public class Main {
 							System.out.println("Alternativno ime:");
 							certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.18"),
 							        critical,
-							        new GeneralNames(new GeneralName(altNameType, in.next())));
+							        new GeneralNames(new GeneralName(altNameType, in.nextLine())));
 						}
 						
 						System.out.println("Koriscenje kljuca: \nPrisutno[0/1]:");
@@ -303,13 +308,16 @@ public class Main {
 						String keypass = "password";
 						keystore.load(null, keypass.toCharArray());
 						
-						String defaultalias = "keystore";
+						System.out.println("Unesite ime pod kojim zelite da sacuvate par kljuceva:");
+						in.nextLine();
+						String defaultalias = in.nextLine();
+						
 						java.security.cert.X509Certificate cert = new JcaX509CertificateConverter().
 								setProvider("BC").getCertificate(certBuilder.build(
 								new JcaContentSignerBuilder("SHA1withRSA").setProvider("BC").build(privKey)));
 						keystore.setKeyEntry(defaultalias, privKey, keypass.toCharArray(), 
 								new java.security.cert.X509Certificate[]{cert});
-						FileOutputStream outStream = new FileOutputStream ("mykeystore.p12");
+						FileOutputStream outStream = new FileOutputStream (defaultalias + ".p12");
 						keystore.store(outStream, keypass.toCharArray());
 						outStream.close();
 						
@@ -348,12 +356,24 @@ public class Main {
 						FileInputStream inStream = new FileInputStream("mykeystore.p12");
 					    keystore.load(inStream, keypass.toCharArray());
 					    inStream.close();
+					    String defaultalias = "keystore";
+					    java.security.cert.Certificate certif = keystore.getCertificate(defaultalias);
+					    
+					    keypass = "CApassword";
+					    FileInputStream inStreamCA = new FileInputStream("CA.p12");
+					    keystore.load(inStreamCA, keypass.toCharArray());
+					    inStreamCA.close();
+					    PrivateKey CAPrivateKey = (PrivateKey) keystore.getKey("CA", keypass.toCharArray());
+					    		
+						java.security.cert.Certificate certifCA = keystore.getCertificate("CA");
 						
-						String defaultalias = "keystore";
-						PrivateKey privKey = (PrivateKey) keystore.getKey(defaultalias, keypass.toCharArray());
-						java.security.cert.Certificate certif = keystore.getCertificate(defaultalias);
+						ContentSigner signGen = new JcaContentSignerBuilder("SHA1withRSA").build(CAPrivateKey);
 						
-						//ContentSigner signGen = new JcaContentSignerBuilder("SHA1withRSA").build(CAPrivateKey);
+						PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(
+										new X500Name(((X509Certificate)certif).getSubjectX500Principal().getName()),
+										certif.getPublicKey());
+						PKCS10CertificationRequest csr = builder.build(signGen);
+						
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
