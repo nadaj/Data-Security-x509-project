@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
+import java.io.StringWriter;
 import java.io.Writer;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
@@ -14,6 +15,7 @@ import java.text.SimpleDateFormat;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.Scanner;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -27,11 +29,13 @@ import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
+import org.bouncycastle.util.io.pem.PemObject;
 
 public class Main {
 
@@ -218,13 +222,36 @@ public class Main {
 						{
 							selected++;
 							critical = false;
-							System.out.println("Tip alternativnog imena	[0 - otherName, 1 - rfc822, 2 - dNSName, 3 - x400Address"
-									+ ", 4 - directoryName, 5 - ediPartyName, 6 - uniformResourceIdentifier, 7 - iPAddress, 8 - registeredID :");
-							int altNameType = in.nextInt();
-							System.out.println("Alternativno ime:");
+							System.out.println("Broj imena?");
+							int num = in.nextInt();
+							GeneralName[] gn = new GeneralName[num];
+							for (int i = 0; i < num; i++)
+							{
+								System.out.println("Tip alternativnog imena	[0 - otherName, 1 - rfc822, 2 - dNSName, 3 - x400Address"
+										+ ", 4 - directoryName, 5 - ediPartyName, 6 - uniformResourceIdentifier, 7 - iPAddress, 8 - registeredID :");
+								int altNameType = in.nextInt();
+								
+								if (altNameType == 5)
+								{
+									System.out.println("Name assigner[. ako nema]:");
+									in.nextLine();
+									String assigner = in.nextLine();
+									System.out.println("Party name:");
+									in.nextLine();
+									String party = in.nextLine();
+									gn[i] = new GeneralName(altNameType, assigner.equals(".")?
+											party:
+											assigner + "=" + party);
+								}
+								// fali za ostale 
+								System.out.println("Alternativno ime:");
+								in.nextLine();
+								gn[i] = new GeneralName(altNameType, in.nextLine());
+							}
+							
 							certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.18"),
 							        critical,
-							        new GeneralNames(new GeneralName(altNameType, in.nextLine())));
+							        new GeneralNames(gn));
 						}
 						
 						System.out.println("Koriscenje kljuca: \nPrisutno[0/1]:");
@@ -370,10 +397,75 @@ public class Main {
 						ContentSigner signGen = new JcaContentSignerBuilder("SHA1withRSA").build(CAPrivateKey);
 						
 						PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(
-										new X500Name(((X509Certificate)certif).getSubjectX500Principal().getName()),
+								X500Name.getInstance(((X509Certificate)certif).getSubjectX500Principal().getEncoded()),
 										certif.getPublicKey());
 						PKCS10CertificationRequest csr = builder.build(signGen);
 						
+						// ISPIS CSR
+						PemObject pemObject = new PemObject("CERTIFICATE REQUEST", csr.getEncoded());
+						StringWriter str = new StringWriter();
+						JcaPEMWriter pw = new JcaPEMWriter(str);
+						pw.writeObject(pemObject);
+						pw.close();
+						str.close();
+						System.out.println(str);
+						
+						// PRIKAZ DETALJA SERTIFIKATA
+						
+						X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
+								((X509Certificate)certifCA).getIssuerX500Principal(),
+								((X509Certificate)certif).getSerialNumber(),
+								((X509Certificate)certif).getNotBefore(), ((X509Certificate)certif).getNotAfter(),
+								((X509Certificate)certif).getSubjectX500Principal(), certif.getPublicKey());
+						
+						Integer pathLenConstraint = ((X509Certificate)certif).getBasicConstraints();
+						boolean isCritical = false;
+						if (((X509Certificate)certif).getCriticalExtensionOIDs().contains("2.5.29.19"))
+						{
+							isCritical = true;
+						}
+						if(pathLenConstraint == Integer.MAX_VALUE)
+						{
+							certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
+									isCritical,
+							        new BasicConstraints(true));
+						}
+						else if (pathLenConstraint > -1)
+						{
+							certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
+									isCritical,
+							        new BasicConstraints(pathLenConstraint));
+						}
+						
+						boolean[] keyUsage = ((X509Certificate)certif).getKeyUsage();
+						if (keyUsage != null)
+						{
+							int keyUsageInt = 0;
+							for (int i = 0; i < 9; i++)
+							{
+								if (keyUsage[i])
+									keyUsageInt |= (1 << i);
+							}
+							certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.15"),
+									true,
+							        new KeyUsage(keyUsageInt));
+						}
+						
+						if (((X509Certificate)certif).getIssuerAlternativeNames() != null)
+						{
+							 Iterator it = ((X509Certificate)certif).getIssuerAlternativeNames().iterator();
+							 GeneralName[] gn = new GeneralName[((X509Certificate)certif).getIssuerAlternativeNames().size()];
+							 int i = 0;
+							 while (it.hasNext())
+							 {
+								 gn[i++] = GeneralName.getInstance(it.next());
+							 }
+							 certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.18"),
+								        false,
+								        new GeneralNames(gn));
+							 
+						}
+							        
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
