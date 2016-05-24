@@ -1,31 +1,31 @@
 package main;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.io.Writer;
 import java.math.BigInteger;
 import java.net.InetAddress;
-import java.nio.charset.Charset;
 import java.security.*;
 import java.security.cert.X509Certificate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.Scanner;
-
 import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import javax.crypto.spec.SecretKeySpec;
-
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERGeneralString;
 import org.bouncycastle.asn1.DEROctetString;
@@ -427,18 +427,35 @@ public class Main {
 								System.out.println("Unesite sifru:");
 								String pass = in.nextLine();
 								
+								byte[] key = pass.getBytes("UTF-8");
+						        MessageDigest sha = MessageDigest.getInstance("SHA-1");
+						        key = sha.digest(key);
+						        key = Arrays.copyOf(key, 16); // use only first 128 bit
+						        SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
+						        
+						        Cipher c = Cipher.getInstance("AES");
+						        c.init(Cipher.DECRYPT_MODE, secretKeySpec);
 								KeyStore ks = KeyStore.getInstance("pkcs12");
-								FileInputStream inStream = new FileInputStream(alias + ".p12");
-							    ks.load(inStream, keypass.toCharArray());
-							    inStream.close();
-								PrivateKey privKey = (PrivateKey) ks.getKey(alias, keypass.toCharArray());
+							    
+						        File inputFile = new File(alias + ".p12");
+						        FileInputStream inputStream = new FileInputStream(inputFile);
+						        byte[] inputBytes = new byte[(int) inputFile.length()];
+					            inputStream.read(inputBytes);
+					            byte[] outputBytes = c.doFinal(inputBytes);
+					            inputStream.close();
+					            InputStream inStream = new ByteArrayInputStream(outputBytes); 
+					            ks.load(inStream, pass.toCharArray());
+					            
+								PrivateKey privKey = (PrivateKey) ks.getKey(alias, pass.toCharArray());
 								java.security.cert.Certificate certif = ks.getCertificate(alias);
-								System.out.println("Unesite alias:");
-								alias = in.nextLine();
-								keystore.setKeyEntry(alias, privKey, pass.toCharArray(), 
-										new java.security.cert.X509Certificate[]{(X509Certificate)certif});
-								FileOutputStream outs = new FileOutputStream("keys");
-								keystore.store(outs, keypass.toCharArray());
+								System.out.println(certif.toString());
+//								System.out.println("Unesite alias:");
+//								alias = in.nextLine();
+//								keystore.setKeyEntry(alias, privKey, pass.toCharArray(), 
+//										new java.security.cert.X509Certificate[]{(X509Certificate)certif});
+//								FileOutputStream outs = new FileOutputStream("keys");
+//								keystore.store(outs, keypass.toCharArray());
+					            inStream.close();
 							}
 							else if (odabrano == 1)
 							{
@@ -458,23 +475,35 @@ public class Main {
 						        System.out.println("Unesite sifru:");
 						        String keypasstemp = in.nextLine();
 						        
-//						        byte[] key = keypasstemp.getBytes("UTF-8");
-//						        MessageDigest sha = MessageDigest.getInstance("SHA-1");
-//						        key = sha.digest(key);
-//						        key = Arrays.copyOf(key, 16); // use only first 128 bit
-//						        SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
-//						        
-//						        Cipher c = Cipher.getInstance("AES");
-//						        c.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+						        byte[] key = keypasstemp.getBytes("UTF-8");
+						        MessageDigest sha = MessageDigest.getInstance("SHA-1");
+						        key = sha.digest(key);
+						        key = Arrays.copyOf(key, 16); // use only first 128 bit
+						        SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
+						        
+						        Cipher c = Cipher.getInstance("AES");
+						        c.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+						        
 						        FileOutputStream outStream = new FileOutputStream (filename + ".p12");
-//						        CipherOutputStream cos = new CipherOutputStream(outStream, c);
-//						        PrintWriter pw = new PrintWriter(new OutputStreamWriter(cos));
-//						        
-//						        pw.close();
 						        KeyStore keystore1 = KeyStore.getInstance("pkcs12");
 						        keystore1.load(null, keypasstemp.toCharArray());
+						        PrivateKey privKey = (PrivateKey) keystore.getKey(alias, keypass.toCharArray());
+								java.security.cert.Certificate certif = keystore.getCertificate(alias);
+						        keystore1.setKeyEntry(alias, privKey, keypasstemp.toCharArray(), 
+										new java.security.cert.X509Certificate[]{(X509Certificate)certif});
 						        keystore1.store(outStream, keypasstemp.toCharArray());
 						        outStream.close();
+						        
+						        File inputFile = new File(filename + ".p12");
+						        FileInputStream inputStream = new FileInputStream(inputFile);
+						        byte[] inputBytes = new byte[(int) inputFile.length()];
+					            inputStream.read(inputBytes);
+					            byte[] outputBytes = c.doFinal(inputBytes);
+					            FileOutputStream outputStream = new FileOutputStream(inputFile);
+					            outputStream.write(outputBytes);
+					             
+					            inputStream.close();
+					            outputStream.close();
 							}
 							else
 								System.out.println("Uneta je pogresna opcija.");
