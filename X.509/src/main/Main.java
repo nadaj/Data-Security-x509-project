@@ -4,40 +4,46 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.Writer;
 import java.math.BigInteger;
 import java.net.InetAddress;
+import java.nio.charset.Charset;
 import java.security.*;
 import java.security.cert.X509Certificate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Scanner;
 import javax.crypto.Cipher;
-import javax.crypto.CipherInputStream;
-import javax.crypto.CipherOutputStream;
 import javax.crypto.spec.SecretKeySpec;
+import javax.security.auth.x500.X500Principal;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERGeneralString;
 import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.pkcs.Attribute;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.Extensions;
+import org.bouncycastle.asn1.x509.ExtensionsGenerator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
@@ -45,6 +51,7 @@ import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequest;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.IPAddress;
 import org.bouncycastle.util.io.pem.PemObject;
@@ -96,11 +103,13 @@ public class Main {
 	public static void main(String[] args) {
 		int option = 0;
 		Scanner in = new Scanner(System.in);
+		Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 		try {
 			KeyStore keystore = KeyStore.getInstance("pkcs12");	// drugi argument moze da bude provider
 			String keypass = "password";
 			
 			File file = new File("keys");
+			
 			if (file.length() != 0)
 			{
 				FileInputStream inputStream = new FileInputStream("keys");
@@ -121,6 +130,7 @@ public class Main {
 				System.out.println("2. Uvoz/Izvoz kljuceva");
 				System.out.println("3. Potpisivanje sertifikata");
 				System.out.println("4. Izvoz kreiranog sertifikata");
+				System.out.println("5. Pregled detalja postojecih parova kljuceva za sertifikat");
 				System.out.println("-------------------------------------------");
 				option = in.nextInt();
 				if (option == 0) break;
@@ -206,7 +216,6 @@ public class Main {
 						nameBuilder.addRDN(BCStyle.E, email);
 						
 						// init key generator
-						Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 						KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA", BouncyCastleProvider.PROVIDER_NAME);
 						SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
 						keyGen.initialize(keysize, random);
@@ -408,10 +417,6 @@ public class Main {
 						FileOutputStream outStream = new FileOutputStream ("keys");
 						keystore.store(outStream, keypass.toCharArray());
 						outStream.close();
-							
-	//						cert.verify(pubKey);
-	//						System.out.println(privKey.toString());
-						
 					}
 					break;
 					case 2:
@@ -463,13 +468,21 @@ public class Main {
 								int i = 1;
 								System.out.println("Aliasi postojecih kljuceva u keystore-u:");
 						        while(enumeration.hasMoreElements()) {
-						            String alias = (String)enumeration.nextElement();
-						            System.out.println(i + ". " + alias);
-						            i++;
+						        	String alias = (String)enumeration.nextElement();
+						        	if (keystore.isKeyEntry(alias))
+						        	{
+							            System.out.println(i + ". " + alias);
+							            i++;
+						        	}
 						        }
 						        System.out.println("Unesite alias:");
 						        in.nextLine();
 						        String alias = in.nextLine();
+						        if (!keystore.isKeyEntry(alias))
+						        {
+						        	System.out.println("Par kljuceva sa unetim aliasom ne postoji.");
+							    	break;
+						        }
 						        System.out.println("Unesite naziv fajla:");
 						        String filename = in.nextLine();
 						        System.out.println("Unesite sifru:");
@@ -494,16 +507,17 @@ public class Main {
 						        keystore1.store(outStream, keypasstemp.toCharArray());
 						        outStream.close();
 						        
-						        File inputFile = new File(filename + ".p12");
-						        FileInputStream inputStream = new FileInputStream(inputFile);
-						        byte[] inputBytes = new byte[(int) inputFile.length()];
-					            inputStream.read(inputBytes);
-					            byte[] outputBytes = c.doFinal(inputBytes);
-					            FileOutputStream outputStream = new FileOutputStream(inputFile);
-					            outputStream.write(outputBytes);
-					             
-					            inputStream.close();
-					            outputStream.close();
+//						        // ovo je za aes al sam zakom jer ne radi
+//						        File inputFile = new File(filename + ".p12");
+//						        FileInputStream inputStream = new FileInputStream(inputFile);
+//						        byte[] inputBytes = new byte[(int) inputFile.length()];
+//					            inputStream.read(inputBytes);
+//					            byte[] outputBytes = c.doFinal(inputBytes);
+//					            FileOutputStream outputStream = new FileOutputStream(inputFile);
+//					            outputStream.write(outputBytes);
+//					             
+//					            inputStream.close();
+//					            outputStream.close();
 							}
 							else
 								System.out.println("Uneta je pogresna opcija.");
@@ -516,75 +530,82 @@ public class Main {
 					case 3:
 					{
 						try {
-	//						KeyStore keystore = KeyStore.getInstance("pkcs12");
-	//						String keypass = "password";
-							FileInputStream inStream = new FileInputStream("mykeystore.p12");
-						    keystore.load(inStream, keypass.toCharArray());
-						    inStream.close();
-						    String defaultalias = "keystore";
-						    java.security.cert.Certificate certif = keystore.getCertificate(defaultalias);
-						    
-						    keypass = "CApassword";
+							Enumeration<String> enumeration = keystore.aliases();
+							int i = 1;
+							System.out.println("Aliasi postojecih kljuceva u keystore-u:");
+					        while(enumeration.hasMoreElements()) {
+					            String alias = (String)enumeration.nextElement();
+					            if (keystore.isKeyEntry(alias))
+					            {
+						            System.out.println(i + ". " + alias);
+						            i++;
+					            }
+					        }
+					        System.out.println("Unesite alias:");
+					        in.nextLine();
+					        String alias = in.nextLine();
+					        if (!keystore.isKeyEntry(alias))
+						    {
+						    	System.out.println("Par kljuceva sa unetim aliasom ne postoji.");
+						    	break;
+						    }
+					        
+						    java.security.cert.Certificate certif = keystore.getCertificate(alias);
+						    PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, keypass.toCharArray());
+						    System.out.println(certif.toString());
+						    String keypassCA = "CApassword";
 						    FileInputStream inStreamCA = new FileInputStream("CA.p12");
-						    keystore.load(inStreamCA, keypass.toCharArray());
+						    KeyStore keystoreCA = KeyStore.getInstance("pkcs12");
+						    keystoreCA.load(inStreamCA, keypassCA.toCharArray());
 						    inStreamCA.close();
-						    PrivateKey CAPrivateKey = (PrivateKey) keystore.getKey("CA", keypass.toCharArray());
-						    		
-							java.security.cert.Certificate certifCA = keystore.getCertificate("CA");
+						    PrivateKey CAPrivateKey = (PrivateKey) keystoreCA.getKey("CA", keypassCA.toCharArray());	
+							java.security.cert.Certificate certifCA = keystoreCA.getCertificate("CA");
 							
-							ContentSigner signGen = new JcaContentSignerBuilder("SHA1withRSA").build(CAPrivateKey);
+							// Generate CSR
+							X500Name x500Subjectname = new JcaX509CertificateHolder((X509Certificate) certif).getSubject();
+							PKCS10CertificationRequestBuilder csrbuilder = new JcaPKCS10CertificationRequestBuilder(
+									x500Subjectname, certif.getPublicKey());
 							
-							PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(
-									X500Name.getInstance(((X509Certificate)certif).getSubjectX500Principal().getEncoded()),
-											certif.getPublicKey());
-							PKCS10CertificationRequest csr = builder.build(signGen);
-							
-							// ISPIS CSR
-							PemObject pemObject = new PemObject("CERTIFICATE REQUEST", csr.getEncoded());
-							StringWriter str = new StringWriter();
-							JcaPEMWriter pw = new JcaPEMWriter(str);
-							pw.writeObject(pemObject);
-							pw.close();
-							str.close();
-							System.out.println(str);
-							
-							// PRIKAZ DETALJA SERTIFIKATA
-							
-							X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
-									((X509Certificate)certifCA).getIssuerX500Principal(),
-									((X509Certificate)certif).getSerialNumber(),
-									((X509Certificate)certif).getNotBefore(), ((X509Certificate)certif).getNotAfter(),
-									((X509Certificate)certif).getSubjectX500Principal(), certif.getPublicKey());
-							
+							ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
+												
 							Integer pathLenConstraint = ((X509Certificate)certif).getBasicConstraints();
 							boolean isCritical = false;
-							if (((X509Certificate)certif).getCriticalExtensionOIDs().contains("2.5.29.19"))
+							if (((X509Certificate)certif).getExtensionValue("2.5.29.19") != null)
 							{
-								isCritical = true;
-							}
-							if(pathLenConstraint == Integer.MAX_VALUE)
-							{
-								certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
-										isCritical,
-								        new BasicConstraints(true));
-							}
-							else if (pathLenConstraint > -1)
-							{
-								certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
-										isCritical,
-								        new BasicConstraints(pathLenConstraint));
+								if (((X509Certificate)certif).getCriticalExtensionOIDs().contains("2.5.29.19"))
+								{
+									isCritical = true;
+								}
+								if(pathLenConstraint == Integer.MAX_VALUE)
+								{
+									extensionsGenerator.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
+											isCritical,
+									        new BasicConstraints(true));
+								}
+								else if (pathLenConstraint > -1)
+								{
+									extensionsGenerator.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
+											isCritical,
+									        new BasicConstraints(pathLenConstraint));
+								}
+								else
+								{
+									extensionsGenerator.addExtension(new ASN1ObjectIdentifier("2.5.29.19"),
+											isCritical,
+									        new BasicConstraints(false));
+								}
 							}
 							
 							boolean[] keyUsage = ((X509Certificate)certif).getKeyUsage();
 							if (keyUsage != null)
 							{
 								int keyUsageInt = 0;
-								for (int i = 0; i < 9; i++)
+								for (i = 0; i < 9; i++)
 								{
 									if (keyUsage[i])
 										keyUsageInt |= (1 << i);
 								}
-								certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.15"),
+								extensionsGenerator.addExtension(new ASN1ObjectIdentifier("2.5.29.15"),
 										true,
 								        new KeyUsage(keyUsageInt));
 							}
@@ -593,16 +614,81 @@ public class Main {
 							{
 								 Iterator it = ((X509Certificate)certif).getIssuerAlternativeNames().iterator();
 								 GeneralName[] gn = new GeneralName[((X509Certificate)certif).getIssuerAlternativeNames().size()];
-								 int i = 0;
+								 i = 0;
 								 while (it.hasNext())
 								 {
-									 gn[i++] = GeneralName.getInstance(it.next());
+									 List list = (List)it.next();
+									 switch ((int)list.get(0))
+									 {
+										 case 1:
+										 {
+											 DERGeneralString dgs = new DERGeneralString((String)list.get(1));
+											 gn[i++] = new GeneralName(GeneralName.rfc822Name, dgs);
+										 } break;
+										 case 2: case 6:
+										 {
+											 gn[i++] = new GeneralName((int)list.get(0), (String)list.get(1));
+										 } break;
+										 case 7:
+										 {
+											 InetAddress ip = InetAddress.getByName((String)list.get(1));
+											 gn[i++] = new GeneralName(GeneralName.iPAddress, new DEROctetString(ip.getAddress()));
+										 } break;
+									 }
 								 }
-								 certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.18"),
+								 extensionsGenerator.addExtension(new ASN1ObjectIdentifier("2.5.29.18"),
 									        false,
 									        new GeneralNames(gn));
 							}
-								        
+							
+							csrbuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
+							ContentSigner signGen = new JcaContentSignerBuilder("SHA1withRSA").build(privateKey);
+							PKCS10CertificationRequest csr = csrbuilder.build(signGen);
+						
+							// ISPIS CSR 
+							PemObject pemObject = new PemObject("CERTIFICATE REQUEST", csr.getEncoded());
+							StringWriter str = new StringWriter();
+							JcaPEMWriter pw = new JcaPEMWriter(str);
+							pw.writeObject(pemObject);
+							pw.close();
+							str.close();
+							System.out.println(str);
+							System.out.println(certif.toString());
+							JcaPKCS10CertificationRequest jcaRequest = new JcaPKCS10CertificationRequest(csr);
+							
+							X500Name x500SubjectnameCA = new JcaX509CertificateHolder((X509Certificate) certifCA).getSubject();
+							X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
+									new X500Principal(x500SubjectnameCA.getEncoded()),
+									((X509Certificate)certif).getSerialNumber(),
+									((X509Certificate)certif).getNotBefore(), ((X509Certificate)certif).getNotAfter(),
+									new X500Principal(jcaRequest.getSubject().getEncoded()), jcaRequest.getPublicKey() 
+									);
+							
+							// COPY EXTENSIONS FROM CSR
+							Attribute[] attributes = csr.getAttributes();
+					        for (Attribute attr : attributes) 
+					        {
+					            if (attr.getAttrType().equals(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest)) 
+					            {
+					                Extensions extensions = Extensions.getInstance(attr.getAttrValues().getObjectAt(0));
+					                Enumeration e = extensions.oids();
+					                while (e.hasMoreElements()) 
+					                {
+					                    ASN1ObjectIdentifier oid = (ASN1ObjectIdentifier) e.nextElement();
+					                    Extension ext = extensions.getExtension(oid);
+					                    certBuilder.addExtension(oid, ext.isCritical(), ext.getParsedValue());
+					                }
+					            }
+					        }
+					        
+							java.security.cert.X509Certificate signedCertificate = new JcaX509CertificateConverter().
+									setProvider("BC").getCertificate(certBuilder.build(
+									new JcaContentSignerBuilder("SHA1withRSA").setProvider("BC").build(CAPrivateKey)));
+							
+							keystore.deleteEntry(alias);
+							keystore.setCertificateEntry(alias, signedCertificate);
+							FileOutputStream outStream = new FileOutputStream ("keys");
+							keystore.store(outStream, keypass.toCharArray());
 						} catch (Exception e) {
 							e.printStackTrace();
 						}
@@ -611,20 +697,58 @@ public class Main {
 					case 4:
 					{
 						try {
-//							java.security.cert.Certificate certif = importCertificate("keystore", "password", "mykeystore.p12");
-//							 File file = new File("encodedcert.cer");
-//							 byte[] buf = certif.getEncoded();
-//							 
-//							 FileOutputStream os = new FileOutputStream(file);
-//							 os.write(buf);
-//							 
-//							 Writer wr = new OutputStreamWriter(os, Charset.forName("UTF-8"));
-//							 wr.write(Base64.getEncoder().withoutPadding().encodeToString(buf));
-//							 wr.flush();
-//							 os.close();
+							Enumeration<String> enumeration = keystore.aliases();
+							int i = 1;
+							System.out.println("Aliasi postojecih sertifikata u keystore-u:");
+					        while(enumeration.hasMoreElements()) {
+					            String alias = (String)enumeration.nextElement();
+					            if (keystore.isCertificateEntry(alias))
+					            {
+						            System.out.println(i + ". " + alias);
+						            i++;
+					            }
+					        }
+					        System.out.println("Unesite alias:");
+					        in.nextLine();
+					        String alias = in.nextLine();
+					        if (!keystore.isCertificateEntry(alias))
+						    {
+						    	System.out.println("Sertifikat sa unetim aliasom ne postoji.");
+						    	break;
+						    }
+							 java.security.cert.Certificate certif = keystore.getCertificate(alias);
+							 System.out.println("Unesite naziv fajla:");
+						     
+							 File certFile = new File(in.nextLine() + ".cer");
+							 byte[] buf = certif.getEncoded();
+							 FileOutputStream os = new FileOutputStream(certFile);
+							 os.write(buf);
+							 Writer wr = new OutputStreamWriter(os, Charset.forName("UTF-8"));
+							 wr.write(Base64.getEncoder().withoutPadding().encodeToString(buf));
+							 wr.flush();
+							 os.close();
+							 
 						} catch (Exception e) {
 							e.printStackTrace();
 						}
+					}
+					break;
+					case 5:
+					{
+						Enumeration<String> enumeration = keystore.aliases();
+						int i = 1;
+						System.out.println("Aliasi postojecih kljuceva u keystore-u:");
+				        while(enumeration.hasMoreElements()) {
+				            String alias = (String)enumeration.nextElement();
+				            System.out.println(i + ". " + alias);
+				            i++;
+				        }
+				        System.out.println("Unesite alias:");
+				        in.nextLine();
+				        String alias = in.nextLine();
+						java.security.cert.Certificate certif = keystore.getCertificate(alias);
+						
+						System.out.println(certif.toString());
 					}
 					break;
 				}
