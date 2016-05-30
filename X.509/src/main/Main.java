@@ -446,6 +446,8 @@ public class Main {
 						        FileInputStream inputStream = new FileInputStream(inputFile);
 						        byte[] inputBytes = new byte[(int) inputFile.length()];
 					            inputStream.read(inputBytes);
+					            inputBytes = Base64.getDecoder().decode(inputBytes);
+					            
 					            byte[] outputBytes = c.doFinal(inputBytes);
 					            inputStream.close();
 					            InputStream inStream = new ByteArrayInputStream(outputBytes); 
@@ -453,13 +455,13 @@ public class Main {
 					            
 								PrivateKey privKey = (PrivateKey) ks.getKey(alias, pass.toCharArray());
 								java.security.cert.Certificate certif = ks.getCertificate(alias);
-								System.out.println(certif.toString());
-//								System.out.println("Unesite alias:");
-//								alias = in.nextLine();
-//								keystore.setKeyEntry(alias, privKey, pass.toCharArray(), 
-//										new java.security.cert.X509Certificate[]{(X509Certificate)certif});
-//								FileOutputStream outs = new FileOutputStream("keys");
-//								keystore.store(outs, keypass.toCharArray());
+								//System.out.println(certif.toString()); ovo je za testiranje da li je sve ok
+								System.out.println("Unesite alias:");
+								alias = in.nextLine();
+								keystore.setKeyEntry(alias, privKey, pass.toCharArray(), 
+										new java.security.cert.X509Certificate[]{(X509Certificate)certif});
+								FileOutputStream outs = new FileOutputStream("keys");
+								keystore.store(outs, keypass.toCharArray());
 					            inStream.close();
 							}
 							else if (odabrano == 1)
@@ -508,16 +510,18 @@ public class Main {
 						        outStream.close();
 						        
 //						        // ovo je za aes al sam zakom jer ne radi
-//						        File inputFile = new File(filename + ".p12");
-//						        FileInputStream inputStream = new FileInputStream(inputFile);
-//						        byte[] inputBytes = new byte[(int) inputFile.length()];
-//					            inputStream.read(inputBytes);
-//					            byte[] outputBytes = c.doFinal(inputBytes);
-//					            FileOutputStream outputStream = new FileOutputStream(inputFile);
-//					            outputStream.write(outputBytes);
-//					             
-//					            inputStream.close();
-//					            outputStream.close();
+						        File inputFile = new File(filename + ".p12");
+						        FileInputStream inputStream = new FileInputStream(inputFile);
+						        byte[] inputBytes = new byte[(int) inputFile.length()];
+					            inputStream.read(inputBytes);
+					            byte[] outputBytes = c.doFinal(inputBytes);
+					            outputBytes = Base64.getEncoder().encode(outputBytes);
+					            
+					            FileOutputStream outputStream = new FileOutputStream(inputFile);
+					            outputStream.write(outputBytes);
+					             
+					            inputStream.close();
+					            outputStream.close();
 							}
 							else
 								System.out.println("Uneta je pogresna opcija.");
